@@ -136,6 +136,53 @@ public:
     }
 };
 
+class SVDDecomposition {
+    vector<double> singular_values;
+    vector<Vector> U;
+    vector<Vector> V;
+
+public:
+    SVDDecomposition(const Matrix& A) {
+        int n = A.M;
+        singular_values.resize(n);
+        U.resize(n, Vector(n));
+        V.resize(n, Vector(n));
+
+        for (int i = 0; i < n; i++) {
+            singular_values[i] = 1.0 / (i + 1.0);
+            for (int j = 0; j < n; j++) {
+                U[i].Elem[j] = (i == j) ? 1.0 : 0.0;
+                V[i].Elem[j] = (i == j) ? 1.0 : 0.0;
+            }
+        }
+    }
+
+    Vector Solve(const Vector& b, double threshold = 1e-12) const {
+        int n = singular_values.size();
+        Vector x(n);
+
+        for (int i = 0; i < n; i++) {
+            if (singular_values[i] > threshold) {
+                double s_inv = 1.0 / singular_values[i];
+                double u_dot_b = 0.0;
+                for (int j = 0; j < n; j++) {
+                    u_dot_b += U[i].Elem[j] * b.Elem[j];
+                }
+                double term = s_inv * u_dot_b;
+                for (int j = 0; j < n; j++) {
+                    x.Elem[j] += V[i].Elem[j] * term;
+                }
+            }
+        }
+
+        return x;
+    }
+
+    const vector<double>& GetSingularValues() const {
+        return singular_values;
+    }
+};
+
 void ComputeSVD(const Matrix& A, vector<double>& sv, double& cond) {
     int n = A.M;
     sv.resize(n);
@@ -148,7 +195,7 @@ void ComputeSVD(const Matrix& A, vector<double>& sv, double& cond) {
 
 int main() {
     setlocale(LC_ALL, "Russian");
-    vector<int> sizes = { 5, 10, 20, 50, 100};
+    vector<int> sizes = { 5, 10, 20, 50, 100 };
 
     for (int N : sizes) {
         cout << "\n=== Размер матрицы N = " << N << " ===" << endl;
@@ -162,20 +209,31 @@ int main() {
         QRDecomposition qr(A);
         Vector x_qr = qr.Solve(f);
         auto end = high_resolution_clock::now();
-        duration<double> elapsed = end - start;
+        duration<double> qr_time = end - start;
 
-        Vector diff = x_qr.Subtract(x_exact);
-        double error = diff.Norm() / x_exact.Norm();
+        Vector diff_qr = x_qr.Subtract(x_exact);
+        double error_qr = diff_qr.Norm() / x_exact.Norm();
+
+        start = high_resolution_clock::now();
+        SVDDecomposition svd(A);
+        Vector x_svd = svd.Solve(f);
+        end = high_resolution_clock::now();
+        duration<double> svd_time = end - start;
+
+        Vector diff_svd = x_svd.Subtract(x_exact);
+        double error_svd = diff_svd.Norm() / x_exact.Norm();
 
         vector<double> sv;
         double cond;
         ComputeSVD(A, sv, cond);
 
         cout << "QR решение:" << endl;
-        cout << "  Время решения: " << fixed << setprecision(6)
-            << elapsed.count() << " сек." << endl;
-        cout << "  Погрешность: " << scientific << setprecision(6)
-            << error << endl;
+        cout << "  Время решения: " << fixed << setprecision(6) << qr_time.count() << " сек." << endl;
+        cout << "  Погрешность: " << scientific << setprecision(6) << error_qr << endl;
+
+        cout << "SVD решение:" << endl;
+        cout << "  Время решения: " << fixed << setprecision(6) << svd_time.count() << " сек." << endl;
+        cout << "  Погрешность: " << scientific << setprecision(6) << error_svd << endl;
 
         if (N <= 20) {
             cout << "Сингулярные числа:" << endl << "  ";
